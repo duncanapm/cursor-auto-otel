@@ -5,3 +5,8 @@ src/*.js
 src/*.d.ts
 src/*.js.map
 *.tsbuildinfo
+.venv/
+__pycache__/
+*.egg-info/
+*.pyc
+build/

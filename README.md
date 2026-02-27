@@ -2,7 +2,7 @@
 
 Add one file to your project. Set one env var. Every piece of code Cursor writes is traced.
 
-**cursor-auto-otel** is a [Cursor rule](https://docs.cursor.com/context/rules-for-ai) that makes the AI coding assistant produce OpenTelemetry-instrumented code by default. Standard infrastructure traces, AI pipeline structure, and GenAI LLM call tracing — all using standard OTel, sending to any backend.
+**cursor-auto-otel** is a [Cursor rule](https://docs.cursor.com/context/rules-for-ai) that makes the AI coding assistant produce OpenTelemetry-instrumented code by default. Standard infrastructure traces, AI pipeline structure, and GenAI LLM call tracing — all using standard OTel, sending to any backend. Works with TypeScript/Node.js and Python projects.
 
 ## Quick Start
 
@@ -10,13 +10,17 @@ Add one file to your project. Set one env var. Every piece of code Cursor writes
 
 ```bash
 mkdir -p .cursor/rules
-cp node_modules/cursor-auto-otel/.cursor/rules/auto-otel.mdc .cursor/rules/
+curl -o .cursor/rules/auto-otel.mdc https://raw.githubusercontent.com/duncanapm/cursor-auto-otel/main/.cursor/rules/auto-otel.mdc
 ```
 
 2. **Install the helper** (optional — you can also use raw OTel APIs):
 
 ```bash
+# TypeScript / Node.js
 npm install cursor-auto-otel @opentelemetry/api
+
+# Python
+pip install cursor-auto-otel    # from python/ directory, or: pip install opentelemetry-api
 ```
 
 3. **Set the OTLP endpoint:**
@@ -33,10 +37,14 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 # Start Jaeger
 docker compose up -d
 
-# Run the example pipeline
+# TypeScript example
 cd examples/simple-pipeline
-npm install
-npm start
+npm install && npm start
+
+# Python example
+cd examples/simple-pipeline-python
+pip install -r requirements.txt
+python main.py
 
 # Open Jaeger UI
 open http://localhost:16686
@@ -54,14 +62,21 @@ Search for the `simple-pipeline-example` service to see the traces.
 
 ## Helper Library API
 
-The `cursor-auto-otel` npm package exports thin wrappers around the OTel API:
+### TypeScript (`cursor-auto-otel` npm package)
 
 - **`setupTracing(serviceName)`** — configure a tracer provider with OTLP exporter
 - **`tracePipeline(name, fn)`** — create a root span for a pipeline execution
 - **`traceStep(pipeline, stageName, { executionType }, fn)`** — create a child span for a pipeline stage
 - **`traceLLMCall(pipeline, stageName, { provider, model }, fn)`** — create a child span following GenAI semantic conventions
 
-The helper is optional. The Cursor rule teaches Cursor to write correct OTel instrumentation with or without it.
+### Python (`cursor_auto_otel` package)
+
+- **`setup_tracing(service_name)`** — configure a tracer provider with OTLP exporter
+- **`trace_pipeline(name)`** — context manager, yields a `PipelineContext`
+- **`trace_step(pipeline, stage_name, execution_type=...)`** — context manager for a pipeline stage
+- **`trace_llm_call(pipeline, stage_name, provider=..., model=...)`** — context manager, yields a `capture_usage` callable
+
+The helpers are optional. The Cursor rule teaches Cursor to write correct OTel instrumentation with or without them.
 
 ## Backends
 
@@ -79,11 +94,11 @@ Use the [AWS Distro for OpenTelemetry (ADOT) Lambda Layer](https://aws-otel.gith
 
 ## How the Rule Works
 
-Cursor rules (`.mdc` files in `.cursor/rules/`) are instructions that Cursor follows when writing code. With `alwaysApply: true`, the rule is active in every conversation. When you ask Cursor to write a new service, add an API endpoint, or build an AI pipeline, it reads the rule and includes the correct OpenTelemetry setup, span creation, attribute assignment, and error handling — automatically. You get production-grade observability without thinking about it.
+Cursor rules (`.mdc` files in `.cursor/rules/`) are instructions that Cursor follows when writing code. With `alwaysApply: true`, the rule is active in every conversation. When you ask Cursor to write a new service, add an API endpoint, or build an AI pipeline, it reads the rule and includes the correct OpenTelemetry setup, span creation, attribute assignment, and error handling — automatically. The rule detects whether your project is TypeScript or Python and uses the corresponding patterns.
 
 ## Contributing
 
-Issues and PRs welcome. If you use a different language (Python, Go, Java), consider contributing a rule variant.
+Issues and PRs welcome.
 
 ## License
 

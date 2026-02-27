@@ -7,9 +7,13 @@ alwaysApply: true
 
 Every project must be observable. When writing code, always include OpenTelemetry instrumentation across three layers: auto-instrumentation for infrastructure, structured spans for AI pipelines, and GenAI semantic convention spans for LLM calls.
 
+**Detect the project language** from the files present (package.json → TypeScript/Node.js, pyproject.toml/requirements.txt → Python) and use the corresponding patterns below.
+
 ## Layer 1: Tracing Setup & Auto-Instrumentation
 
 When creating a new project or adding tracing for the first time, set up the OTel tracer provider. The OTLP endpoint comes from the environment — never hardcode it.
+
+### TypeScript / Node.js
 
 ```typescript
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
@@ -27,29 +31,37 @@ const provider = new NodeTracerProvider({
   spanProcessors: [new BatchSpanProcessor(exporter)],
 });
 provider.register();
-
-registerInstrumentations({
-  instrumentations: [getNodeAutoInstrumentations()],
-});
+registerInstrumentations({ instrumentations: [getNodeAutoInstrumentations()] });
 ```
 
-This gives you automatic tracing for HTTP, gRPC, AWS SDK, database clients, and more — zero manual spans needed for infrastructure calls.
-
-Dependencies to include:
-- `@opentelemetry/api`
-- `@opentelemetry/sdk-trace-node`
-- `@opentelemetry/sdk-trace-base`
-- `@opentelemetry/exporter-trace-otlp-http`
-- `@opentelemetry/resources`
-- `@opentelemetry/semantic-conventions`
-- `@opentelemetry/auto-instrumentations-node`
-- `@opentelemetry/instrumentation`
+Dependencies: `@opentelemetry/api`, `@opentelemetry/sdk-trace-node`, `@opentelemetry/sdk-trace-base`, `@opentelemetry/exporter-trace-otlp-http`, `@opentelemetry/resources`, `@opentelemetry/semantic-conventions`, `@opentelemetry/auto-instrumentations-node`, `@opentelemetry/instrumentation`
 
 Or use the helper: `import { setupTracing } from "cursor-auto-otel";`
 
+### Python
+
+```python
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import Resource, SERVICE_NAME
+
+resource = Resource.create({SERVICE_NAME: "my-service"})
+provider = TracerProvider(resource=resource)
+provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+trace.set_tracer_provider(provider)
+```
+
+Dependencies: `opentelemetry-api`, `opentelemetry-sdk`, `opentelemetry-exporter-otlp-proto-http`
+
+For auto-instrumentation add `opentelemetry-instrumentation` and run with `opentelemetry-instrument python app.py`, or call `from opentelemetry.instrumentation.auto_instrumentation import sitecustomize` at startup.
+
+Or use the helper: `from cursor_auto_otel import setup_tracing`
+
 ## Layer 2: AI Pipeline Structure
 
-When writing multi-step processing pipelines (data pipelines, AI pipelines, workflow orchestrations), wrap each stage in an OTel span. Use `INTERNAL` span kind for pipeline stages.
+When writing multi-step processing pipelines, wrap each stage in an OTel span. Use `INTERNAL` span kind for pipeline stages.
 
 ### Required attributes for pipeline spans
 
@@ -60,11 +72,16 @@ When writing multi-step processing pipelines (data pipelines, AI pipelines, work
 | `pipeline.execution_type` | string | One of: `"llm"`, `"heuristic"`, `"programmatic"` |
 | `pipeline.success` | boolean | Whether the stage completed without error |
 
-### Manual instrumentation pattern
+### Execution type guidance
+
+- `"llm"` — stage calls an LLM or generative AI model (prefer `traceLLMCall`/`trace_llm_call` for these)
+- `"heuristic"` — stage applies rules, scoring, regex, or other deterministic-but-configurable logic
+- `"programmatic"` — stage is pure code: validation, transformation, DB lookups, API calls
+
+### TypeScript — manual
 
 ```typescript
-import { trace, SpanKind, SpanStatusCode } from "@opentelemetry/api";
-
+import { trace, context, SpanKind, SpanStatusCode } from "@opentelemetry/api";
 const tracer = trace.getTracer("my-service");
 
 async function runPipeline(input: string) {
@@ -72,74 +89,99 @@ async function runPipeline(input: string) {
     pipelineSpan.setAttribute("pipeline.name", "my-pipeline");
     try {
       const ctx = trace.setSpan(context.active(), pipelineSpan);
-
-      const step1Result = await tracer.startActiveSpan("validate-input", { kind: SpanKind.INTERNAL }, ctx, async (span) => {
-        span.setAttribute("pipeline.stage", "validate-input");
+      const result = await tracer.startActiveSpan("validate", { kind: SpanKind.INTERNAL }, ctx, async (span) => {
+        span.setAttribute("pipeline.stage", "validate");
         span.setAttribute("pipeline.execution_type", "programmatic");
         span.setAttribute("pipeline.name", "my-pipeline");
         try {
-          const result = await validateInput(input);
+          const r = await validateInput(input);
           span.setAttribute("pipeline.success", true);
-          return result;
-        } catch (error) {
+          return r;
+        } catch (e) {
           span.setAttribute("pipeline.success", false);
-          span.recordException(error as Error);
-          span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
-          throw error;
-        } finally {
-          span.end();
-        }
+          span.recordException(e as Error);
+          span.setStatus({ code: SpanStatusCode.ERROR, message: (e as Error).message });
+          throw e;
+        } finally { span.end(); }
       });
-
-      // ... more stages ...
-
       pipelineSpan.setAttribute("pipeline.success", true);
-      return finalResult;
-    } catch (error) {
+      return result;
+    } catch (e) {
       pipelineSpan.setAttribute("pipeline.success", false);
-      pipelineSpan.recordException(error as Error);
-      pipelineSpan.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
-      throw error;
-    } finally {
-      pipelineSpan.end();
-    }
+      pipelineSpan.recordException(e as Error);
+      pipelineSpan.setStatus({ code: SpanStatusCode.ERROR, message: (e as Error).message });
+      throw e;
+    } finally { pipelineSpan.end(); }
   });
 }
 ```
 
-### Using the helper library
+### TypeScript — helper library
 
 ```typescript
-import { tracePipeline, traceStep, traceLLMCall } from "cursor-auto-otel";
+import { tracePipeline, traceStep } from "cursor-auto-otel";
 
 const result = await tracePipeline("my-pipeline", async (pipeline) => {
-  const validated = await traceStep(pipeline, "validate-input", { executionType: "programmatic" }, async () => {
+  const validated = await traceStep(pipeline, "validate", { executionType: "programmatic" }, async () => {
     return validateInput(input);
   });
-
-  const enriched = await traceStep(pipeline, "enrich-data", { executionType: "heuristic" }, async () => {
+  return await traceStep(pipeline, "enrich", { executionType: "heuristic" }, async () => {
     return applyHeuristics(validated);
   });
-
-  return enriched;
 });
 ```
 
-### Execution type guidance
+### Python — manual
 
-- `"llm"` — stage calls an LLM or generative AI model (prefer `traceLLMCall` for these)
-- `"heuristic"` — stage applies rules, scoring, regex, or other deterministic-but-configurable logic
-- `"programmatic"` — stage is pure code: validation, transformation, DB lookups, API calls
+```python
+from opentelemetry import trace
+from opentelemetry.trace import SpanKind, StatusCode
+
+tracer = trace.get_tracer("my-service")
+
+def run_pipeline(input_text: str):
+    with tracer.start_as_current_span("my-pipeline", kind=SpanKind.INTERNAL) as pipeline_span:
+        pipeline_span.set_attribute("pipeline.name", "my-pipeline")
+        try:
+            ctx = trace.set_span_in_context(pipeline_span)
+            with tracer.start_as_current_span("validate", kind=SpanKind.INTERNAL, context=ctx) as span:
+                span.set_attribute("pipeline.stage", "validate")
+                span.set_attribute("pipeline.execution_type", "programmatic")
+                span.set_attribute("pipeline.name", "my-pipeline")
+                try:
+                    result = validate_input(input_text)
+                    span.set_attribute("pipeline.success", True)
+                except Exception as exc:
+                    span.set_attribute("pipeline.success", False)
+                    span.record_exception(exc)
+                    span.set_status(StatusCode.ERROR, str(exc))
+                    raise
+            pipeline_span.set_attribute("pipeline.success", True)
+            return result
+        except Exception as exc:
+            pipeline_span.set_attribute("pipeline.success", False)
+            pipeline_span.record_exception(exc)
+            pipeline_span.set_status(StatusCode.ERROR, str(exc))
+            raise
+```
+
+### Python — helper library
+
+```python
+from cursor_auto_otel import trace_pipeline, trace_step
+
+with trace_pipeline("my-pipeline") as pipeline:
+    with trace_step(pipeline, "validate", execution_type="programmatic"):
+        validated = validate_input(input_text)
+    with trace_step(pipeline, "enrich", execution_type="heuristic"):
+        enriched = apply_heuristics(validated)
+```
 
 ## Layer 3: GenAI LLM Call Spans
 
-When writing code that calls LLM APIs (OpenAI, Anthropic, Bedrock, etc.), create spans following the OTel GenAI semantic conventions. Use `CLIENT` span kind — these are outbound calls to an external AI service.
+When writing code that calls LLM APIs (OpenAI, Anthropic, Bedrock, etc.), create spans following the OTel GenAI semantic conventions. Use `CLIENT` span kind.
 
-### Span naming
-
-Span name MUST follow the format: `{gen_ai.operation.name} {gen_ai.request.model}`
-
-Examples: `"chat gpt-4o"`, `"chat claude-sonnet-4-20250514"`, `"embeddings text-embedding-3-small"`
+Span name MUST follow: `{gen_ai.operation.name} {gen_ai.request.model}` — e.g., `"chat gpt-4o"`, `"chat claude-sonnet-4-20250514"`
 
 ### Required and recommended attributes
 
@@ -154,114 +196,67 @@ Examples: `"chat gpt-4o"`, `"chat claude-sonnet-4-20250514"`, `"embeddings text-
 | `gen_ai.request.max_tokens` | Recommended | `1024` |
 | `gen_ai.response.model` | Recommended | `"gpt-4o-2024-08-06"` |
 | `gen_ai.response.id` | Recommended | `"chatcmpl-abc123"` |
-| `gen_ai.request.temperature` | Recommended | `0.7` |
 
-### Well-known provider names
+Well-known providers: `"openai"`, `"anthropic"`, `"aws.bedrock"`, `"azure.ai.openai"`, `"cohere"`, `"deepseek"`, `"gcp.gemini"`, `"gcp.vertex_ai"`, `"groq"`, `"mistral_ai"`, `"perplexity"`
 
-Use these exact strings for `gen_ai.provider.name`: `"openai"`, `"anthropic"`, `"aws.bedrock"`, `"azure.ai.openai"`, `"cohere"`, `"deepseek"`, `"gcp.gemini"`, `"gcp.vertex_ai"`, `"groq"`, `"mistral_ai"`, `"perplexity"`
+Well-known operations: `"chat"`, `"text_completion"`, `"embeddings"`, `"create_agent"`, `"invoke_agent"`, `"execute_tool"`, `"generate_content"`
 
-### Well-known operation names
-
-`"chat"`, `"text_completion"`, `"embeddings"`, `"create_agent"`, `"invoke_agent"`, `"execute_tool"`, `"generate_content"`
-
-### Manual instrumentation pattern
-
-```typescript
-import { trace, SpanKind, SpanStatusCode } from "@opentelemetry/api";
-
-const tracer = trace.getTracer("my-service");
-
-async function callLLM(messages: Array<{ role: string; content: string }>) {
-  const model = "gpt-4o";
-  return tracer.startActiveSpan(`chat ${model}`, { kind: SpanKind.CLIENT }, async (span) => {
-    span.setAttribute("gen_ai.operation.name", "chat");
-    span.setAttribute("gen_ai.provider.name", "openai");
-    span.setAttribute("gen_ai.request.model", model);
-    span.setAttribute("gen_ai.request.max_tokens", 1024);
-
-    try {
-      const response = await openai.chat.completions.create({
-        model,
-        messages,
-        max_tokens: 1024,
-      });
-
-      span.setAttribute("gen_ai.usage.input_tokens", response.usage?.prompt_tokens ?? 0);
-      span.setAttribute("gen_ai.usage.output_tokens", response.usage?.completion_tokens ?? 0);
-      span.setAttribute("gen_ai.response.finish_reasons", [response.choices[0]?.finish_reason ?? "unknown"]);
-      span.setAttribute("gen_ai.response.model", response.model);
-      span.setAttribute("gen_ai.response.id", response.id);
-
-      return response.choices[0]?.message?.content ?? "";
-    } catch (error) {
-      span.recordException(error as Error);
-      span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
-      throw error;
-    } finally {
-      span.end();
-    }
-  });
-}
-```
-
-### Using the helper library
+### TypeScript — helper library (OpenAI)
 
 ```typescript
 import { traceLLMCall } from "cursor-auto-otel";
 
 const reply = await traceLLMCall(
-  pipeline,
-  "generate-response",
+  pipeline, "generate-response",
   { provider: "openai", model: "gpt-4o", operationName: "chat", maxTokens: 1024 },
   async (captureUsage) => {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages,
-      max_tokens: 1024,
-    });
-
-    captureUsage(
-      response.usage?.prompt_tokens ?? 0,
-      response.usage?.completion_tokens ?? 0,
-      response.choices[0]?.finish_reason,
-    );
-
+    const response = await openai.chat.completions.create({ model: "gpt-4o", messages, max_tokens: 1024 });
+    captureUsage(response.usage?.prompt_tokens ?? 0, response.usage?.completion_tokens ?? 0, response.choices[0]?.finish_reason);
     return response.choices[0]?.message?.content ?? "";
   },
 );
 ```
 
-### Anthropic example
+### TypeScript — helper library (Anthropic)
 
 ```typescript
 const reply = await traceLLMCall(
-  pipeline,
-  "analyze-document",
+  pipeline, "analyze-document",
   { provider: "anthropic", model: "claude-sonnet-4-20250514", operationName: "chat", maxTokens: 2048 },
   async (captureUsage) => {
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 2048,
-      messages,
-    });
-
-    captureUsage(
-      response.usage.input_tokens,
-      response.usage.output_tokens,
-      response.stop_reason ?? undefined,
-    );
-
+    const response = await anthropic.messages.create({ model: "claude-sonnet-4-20250514", max_tokens: 2048, messages });
+    captureUsage(response.usage.input_tokens, response.usage.output_tokens, response.stop_reason ?? undefined);
     return response.content[0].type === "text" ? response.content[0].text : "";
   },
 );
 ```
 
+### Python — helper library (OpenAI)
+
+```python
+from cursor_auto_otel import trace_llm_call
+
+with trace_llm_call(pipeline, "generate-response", provider="openai", model="gpt-4o", max_tokens=1024) as capture_usage:
+    response = openai.chat.completions.create(model="gpt-4o", messages=messages, max_tokens=1024)
+    capture_usage(response.usage.prompt_tokens, response.usage.completion_tokens, response.choices[0].finish_reason)
+    reply = response.choices[0].message.content
+```
+
+### Python — helper library (Anthropic)
+
+```python
+with trace_llm_call(pipeline, "analyze-document", provider="anthropic", model="claude-sonnet-4-20250514", max_tokens=2048) as capture_usage:
+    response = anthropic_client.messages.create(model="claude-sonnet-4-20250514", max_tokens=2048, messages=messages)
+    capture_usage(response.usage.input_tokens, response.usage.output_tokens, response.stop_reason)
+    reply = response.content[0].text
+```
+
 ## Error Handling Rules
 
-1. Always call `span.recordException(error)` when catching errors
-2. Always call `span.setStatus({ code: SpanStatusCode.ERROR, message })` on failure
-3. Always call `span.end()` in a `finally` block — never skip it
-4. Set `pipeline.success` to `false` on the span when a stage fails
+1. Always record exceptions on spans (`span.recordException(error)` / `span.record_exception(exc)`)
+2. Always set error status (`SpanStatusCode.ERROR` / `StatusCode.ERROR`)
+3. Always end spans — use `finally` blocks (TS) or `with` statements (Python)
+4. Set `pipeline.success` to `false`/`False` on failure
 5. Let errors propagate — don't swallow exceptions just to end spans cleanly
 
 ## Span Kind Rules
@@ -282,7 +277,7 @@ When writing any new code, verify:
 - [ ] Multi-step pipelines have a root span and child spans per stage
 - [ ] Each pipeline stage span has `pipeline.stage`, `pipeline.execution_type`, and `pipeline.success`
 - [ ] LLM calls have `gen_ai.operation.name`, `gen_ai.provider.name`, and `gen_ai.request.model`
-- [ ] Token usage (`gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`) is captured after LLM responses
-- [ ] Errors are recorded on spans with `recordException` and `ERROR` status
-- [ ] All spans are ended in `finally` blocks
-- [ ] No OTLP endpoints are hardcoded — use `OTEL_EXPORTER_OTLP_ENDPOINT` env var
+- [ ] Token usage (`gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`) captured after LLM responses
+- [ ] Errors are recorded on spans with `record_exception`/`recordException` and `ERROR` status
+- [ ] All spans are ended — `finally` blocks (TS) or `with` context managers (Python)
+- [ ] No OTLP endpoints hardcoded — use `OTEL_EXPORTER_OTLP_ENDPOINT` env var

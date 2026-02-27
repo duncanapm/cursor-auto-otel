@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cursor-auto-otel"
+version = "0.1.0"
+description = "Cursor rule for OpenTelemetry. Make every project observable by default."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+dependencies = [
+    "opentelemetry-api>=1.20.0",
+]
+
+[project.optional-dependencies]
+sdk = [
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.20.0",
+]
+auto = [
+    "opentelemetry-instrumentation>=0.40b0",
+]
+
+[tool.setuptools.packages.find]
+include = ["cursor_auto_otel*"]
