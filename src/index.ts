@@ -146,13 +146,49 @@ export async function traceLLMCall<T>(
 }
 
 export interface SetupTracingOptions {
+  /**
+   * When true (default), register Node auto-instrumentations (HTTP, gRPC, etc.).
+   * Requires @opentelemetry/auto-instrumentations-node and @opentelemetry/instrumentation.
+   */
   autoInstrumentations?: boolean;
 }
 
+/**
+ * Returned by setupTracing. Use shutdown() before process exit to flush spans.
+ * Sampling: the OTel SDK reads OTEL_TRACES_SAMPLER (default parentbased_always_on)
+ * and OTEL_TRACES_SAMPLER_ARG (e.g. 0.1 for TraceIdRatio). For production, set
+ * OTEL_TRACES_SAMPLER=parentbased_traceidratio and OTEL_TRACES_SAMPLER_ARG=0.1.
+ */
+export interface TracerProviderControl {
+  shutdown(): Promise<void>;
+}
+
+let registeredControl: TracerProviderControl | null = null;
+
+/**
+ * Configures the global tracer provider with OTLP export. Idempotent (safe to call once).
+ * Service name: pass as first argument or set OTEL_SERVICE_NAME. Sampling: set
+ * OTEL_TRACES_SAMPLER and OTEL_TRACES_SAMPLER_ARG (see TracerProviderControl).
+ */
 export async function setupTracing(
-  serviceName: string,
-  _options?: SetupTracingOptions,
-): Promise<void> {
+  serviceName?: string,
+  options?: SetupTracingOptions,
+): Promise<TracerProviderControl> {
+  const name =
+    (serviceName?.trim() && serviceName.trim()) ||
+    (typeof process !== "undefined" && process.env?.OTEL_SERVICE_NAME) ||
+    "unknown-service";
+  const autoInstrumentations = options?.autoInstrumentations !== false;
+
+  if (registeredControl !== null) {
+    if (typeof process !== "undefined" && process.env?.NODE_ENV !== "test") {
+      console.warn(
+        "[cursor-auto-otel] setupTracing already called; skipping duplicate registration.",
+      );
+    }
+    return registeredControl;
+  }
+
   const traceNodeMod = await import("@opentelemetry/sdk-trace-node");
   const traceBaseMod = await import("@opentelemetry/sdk-trace-base");
   const exporterMod = await import("@opentelemetry/exporter-trace-otlp-http");
@@ -160,7 +196,7 @@ export async function setupTracing(
   const semconvMod = await import("@opentelemetry/semantic-conventions");
 
   const resource = resourcesMod.resourceFromAttributes({
-    [semconvMod.ATTR_SERVICE_NAME]: serviceName,
+    [semconvMod.ATTR_SERVICE_NAME]: name,
   });
   const exporter = new exporterMod.OTLPTraceExporter();
   const provider = new traceNodeMod.NodeTracerProvider({
@@ -168,4 +204,49 @@ export async function setupTracing(
     spanProcessors: [new traceBaseMod.BatchSpanProcessor(exporter)],
   });
   provider.register();
+
+  const control: TracerProviderControl = {
+    shutdown: () => provider.shutdown(),
+  };
+  registeredControl = control;
+
+  if (
+    typeof process !== "undefined" &&
+    typeof process.on === "function"
+  ) {
+    const shutdown = () => {
+      control
+        .shutdown()
+        .then(() => process.exit(0))
+        .catch((err) => {
+          console.warn("[cursor-auto-otel] shutdown error:", err);
+          process.exit(1);
+        });
+    };
+    process.on("SIGTERM", shutdown);
+    process.on("SIGINT", shutdown);
+  }
+
+  if (autoInstrumentations) {
+    try {
+      const { getNodeAutoInstrumentations } = await import(
+        "@opentelemetry/auto-instrumentations-node"
+      );
+      const { registerInstrumentations } = await import(
+        "@opentelemetry/instrumentation"
+      );
+      registerInstrumentations({
+        instrumentations: [getNodeAutoInstrumentations()],
+      });
+    } catch (err) {
+      if (typeof process !== "undefined" && process.env?.NODE_ENV !== "test") {
+        console.warn(
+          "[cursor-auto-otel] auto-instrumentation skipped — install @opentelemetry/auto-instrumentations-node (and @opentelemetry/instrumentation) for automatic HTTP/DB tracing.",
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+  }
+
+  return control;
 }

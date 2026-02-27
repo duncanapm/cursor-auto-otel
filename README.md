@@ -1,6 +1,10 @@
 # cursor-auto-otel
 
+[![CI](https://github.com/duncanapm/cursor-auto-otel/actions/workflows/ci.yml/badge.svg)](https://github.com/duncanapm/cursor-auto-otel/actions/workflows/ci.yml)
+
 Add one file to your project. Set one env var. Every piece of code Cursor writes is traced.
+
+This project does **not** instrument Cursor itself — it teaches Cursor to produce instrumented code when you ask it to write services, pipelines, or LLM integrations.
 
 **cursor-auto-otel** is a [Cursor rule](https://docs.cursor.com/context/rules-for-ai) that makes the AI coding assistant produce OpenTelemetry-instrumented code by default. Standard infrastructure traces, AI pipeline structure, and GenAI LLM call tracing — all using standard OTel, sending to any backend. Works with TypeScript/Node.js and Python projects.
 
@@ -37,9 +41,10 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 # Start Jaeger
 docker compose up -d
 
-# TypeScript example
+# TypeScript example (Express server with POST /api/support)
 cd examples/simple-pipeline
 npm install && npm start
+# In another terminal: curl -X POST http://localhost:3000/api/support -H "Content-Type: application/json" -d '{"message":"Help me reset my password"}'
 
 # Python example
 cd examples/simple-pipeline-python
@@ -99,6 +104,12 @@ Cursor rules (`.mdc` files in `.cursor/rules/`) are instructions that Cursor fol
 ## Contributing
 
 Issues and PRs welcome.
+
+## Limitations
+
+- **Node/TypeScript only for now** — The helper library and the rule’s code examples target Node.js and TypeScript. A Python rule variant exists; other runtimes are not yet covered.
+- **`pipeline.*` attributes are custom** — They are not part of the official OpenTelemetry semantic conventions. GenAI attributes follow [OTel GenAI semconv](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-spans/).
+- **Rule effectiveness depends on model compliance** — Cursor follows the rule when generating code; it can be overridden or ignored. Consistency relies on the model applying the rule.
 
 ## License
 
