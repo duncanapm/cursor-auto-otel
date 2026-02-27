@@ -1,0 +1,41 @@
+{
+  "name": "cursor-auto-otel",
+  "version": "0.1.0",
+  "description": "Cursor rule for OpenTelemetry. Make every project observable by default.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/",
+    ".cursor/"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "@opentelemetry/api": ">=1.0.0"
+  },
+  "devDependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.212.0",
+    "@opentelemetry/resources": "^2.5.1",
+    "@opentelemetry/sdk-trace-base": "^2.5.1",
+    "@opentelemetry/sdk-trace-node": "^2.5.1",
+    "@opentelemetry/semantic-conventions": "^1.40.0",
+    "typescript": "^5.7.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/duncangillingwater/cursor-auto-otel"
+  },
+  "keywords": [
+    "opentelemetry",
+    "otel",
+    "cursor",
+    "tracing",
+    "observability",
+    "genai",
+    "llm"
+  ]
+}
