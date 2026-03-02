@@ -30,6 +30,10 @@ The Cursor rule file [.cursor/rules/auto-otel.mdc](.cursor/rules/auto-otel.mdc) 
 
 For full setup, verification steps, and troubleshooting, see **[HUMAN_INSTRUCTIONS.md](HUMAN_INSTRUCTIONS.md)**.
 
+### AWS Lambda
+
+Use the [AWS Distro for OpenTelemetry (ADOT) Lambda Layer](https://aws-otel.github.io/docs/getting-started/lambda). The layer provides the tracer and export; your code does not bundle OpenTelemetry. Set `AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-instrument` and enable **Lambda active tracing** (X-Ray). Traces appear in CloudWatch/X-Ray. For export to a custom OTLP endpoint (e.g. Jaeger), see [HUMAN_INSTRUCTIONS.md § AWS Lambda](HUMAN_INSTRUCTIONS.md#aws-lambda).
+
 ---
 
 ## License

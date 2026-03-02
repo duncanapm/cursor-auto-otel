@@ -101,6 +101,31 @@ Use the URL of your OTLP receiver (Jaeger, Grafana Cloud, Datadog Agent, etc.). 
 
 ---
 
+## AWS Lambda
+
+When your instrumented code runs on **AWS Lambda**, use the **AWS Distro for OpenTelemetry (ADOT) Lambda Layer** so the layer provides the tracer and exporter. Your deployment package should **not** bundle OpenTelemetry SDK/exporter packages when using the layer.
+
+### Setup
+
+1. **Add the ADOT Lambda Layer** to your function (region- and runtime-specific ARN). See [ADOT Lambda documentation](https://aws-otel.github.io/docs/getting-started/lambda) for current layer ARNs (e.g. Python: `AWSOpenTelemetryDistroPython` or the legacy `aws-otel-python-amd64-ver-*`).
+2. **Set** `AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-instrument` so the layer’s wrapper runs and OpenTelemetry is on the path.
+3. **Enable Lambda active tracing** (X-Ray) so traces are exported and visible in CloudWatch.
+
+### Tracer initialisation with the layer
+
+When the ADOT layer is active (`AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-instrument`), the **layer** registers the tracer provider. Your code must **not** call `trace.set_tracer_provider()` or otherwise register a provider. Your code should only **create spans** (e.g. root span per request, pipeline stages, LLM spans) using `trace.getTracer()` / `trace.get_tracer()`. If you initialise a provider as well, you can get duplicate or wrong behaviour.
+
+### Where traces go
+
+- **Optimized ADOT layers** (e.g. `AWSOpenTelemetryDistroPython`): export only to **AWS X-Ray**. Traces appear in CloudWatch / X-Ray. No custom OTLP endpoint.
+- **Legacy ADOT layers** (with embedded collector, e.g. `aws-otel-python-amd64-ver-1-32-0`): support a **custom collector config** via `OPENTELEMETRY_COLLECTOR_CONFIG_URI`. With a custom config you can export to both X-Ray and a custom OTLP endpoint (e.g. Jaeger). See [ADOT Lambda custom configuration](https://aws-otel.github.io/docs/getting-started/lambda/lambda-custom-configuration).
+
+### Lambda environment size limit
+
+Lambda has a **4 KB limit** on environment variables. Adding `OPENTELEMETRY_COLLECTOR_CONFIG_URI` (and using the legacy layer) can push you over if you already have many or large env vars. If that happens, move one or more secrets to AWS Systems Manager Parameter Store (SSM) and reference them in your config instead of inline env.
+
+---
+
 ## Verification (how to confirm spans are generated)
 
 1. **Start an OTLP backend** that you can query (e.g. Jaeger, Grafana Cloud). For local Jaeger with the project’s Docker setup:

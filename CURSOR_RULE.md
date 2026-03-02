@@ -16,6 +16,8 @@ This document defines the deterministic enforcement behaviour for OpenTelemetry 
 
 1.4. The tracer provider MUST NOT be registered more than once, and MUST NOT be registered after the first span is created.
 
+1.5. **AWS Lambda with ADOT layer:** When the application runs in AWS Lambda with the ADOT Lambda Layer (detect via `AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-instrument`), the generator MUST NOT register a tracer provider; the layer provides it. The generator MUST only create spans (handlers, pipelines, LLM) using `trace.getTracer()` (TypeScript) or `trace.get_tracer()` (Python). All other requirements (span wrapping, error recording, attributes) still apply.
+
 ---
 
 ## 2. Span wrapping requirements

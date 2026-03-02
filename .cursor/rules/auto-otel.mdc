@@ -16,6 +16,7 @@ Follow **CURSOR_RULE.md** in this repository as the authoritative specification.
 - MUST initialise tracer provider **once at startup** (before any span).
 - MUST use OTLP endpoint from environment. MUST NOT hardcode `OTEL_EXPORTER_OTLP_ENDPOINT` or any OTLP URL.
 - MUST NOT register tracer provider more than once or after first span.
+- When **AWS Lambda** uses the ADOT layer (`AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-instrument`), do **not** initialise the tracer provider in code; the layer does. Only create spans (e.g. via `get_tracer()` / `getTracer()`).
 
 ---
 
