@@ -2,114 +2,35 @@
 
 [![CI](https://github.com/duncanapm/cursor-auto-otel/actions/workflows/ci.yml/badge.svg)](https://github.com/duncanapm/cursor-auto-otel/actions/workflows/ci.yml)
 
-Add one file to your project. Set one env var. Every piece of code Cursor writes is traced.
+cursor-auto-otel makes Cursor generate **OpenTelemetry-instrumented code** by default. Add the rule; set an env var; every handler, pipeline, and LLM call Cursor writes is traced.
 
-This project does **not** instrument Cursor itself — it teaches Cursor to produce instrumented code when you ask it to write services, pipelines, or LLM integrations.
+It does **not** instrument Cursor itself — it teaches Cursor to emit code that, when you run it, produces standard OTel traces and sends them to any OTLP backend (Jaeger, Grafana Cloud, Datadog, Honeycomb, etc.). Supported runtimes: **TypeScript/Node.js** and **Python**.
 
-**cursor-auto-otel** is a [Cursor rule](https://docs.cursor.com/context/rules-for-ai) that makes the AI coding assistant produce OpenTelemetry-instrumented code by default. Standard infrastructure traces, AI pipeline structure, and GenAI LLM call tracing — all using standard OTel, sending to any backend. Works with TypeScript/Node.js and Python projects.
+---
 
-## Quick Start
+## Documentation
 
-1. **Copy the rule** into your project:
+| Document | Audience | Purpose |
+|----------|----------|---------|
+| **[HUMAN_INSTRUCTIONS.md](HUMAN_INSTRUCTIONS.md)** | Engineers | What cursor-auto-otel is, why it exists, guarantees and limitations, installation, verification, troubleshooting. |
+| **[CURSOR_RULE.md](CURSOR_RULE.md)** | AI / Cursor | Deterministic enforcement specification (MUST/MUST NOT, tracer init, span wrapping, error recording, LLM instrumentation, async context, canonical pattern, forbidden anti-patterns, generation checklist). |
 
-```bash
-mkdir -p .cursor/rules
-curl -o .cursor/rules/auto-otel.mdc https://raw.githubusercontent.com/duncanapm/cursor-auto-otel/main/.cursor/rules/auto-otel.mdc
-```
+The Cursor rule file [.cursor/rules/auto-otel.mdc](.cursor/rules/auto-otel.mdc) is a concise enforcement layer that aligns with **CURSOR_RULE.md**; use it in your project so Cursor applies the behaviour when generating code.
 
-2. **Install the helper** (optional — you can also use raw OTel APIs):
+---
 
-```bash
-# TypeScript / Node.js
-npm install cursor-auto-otel @opentelemetry/api
+## Quick start
 
-# Python
-pip install cursor-auto-otel    # from python/ directory, or: pip install opentelemetry-api
-```
+1. Copy the rule:  
+   `mkdir -p .cursor/rules && curl -o .cursor/rules/auto-otel.mdc https://raw.githubusercontent.com/duncanapm/cursor-auto-otel/main/.cursor/rules/auto-otel.mdc`
+2. Set OTLP endpoint:  
+   `export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`
+3. Optionally install the helper:  
+   `npm install cursor-auto-otel @opentelemetry/api` or `pip install cursor-auto-otel`
 
-3. **Set the OTLP endpoint:**
+For full setup, verification steps, and troubleshooting, see **[HUMAN_INSTRUCTIONS.md](HUMAN_INSTRUCTIONS.md)**.
 
-```bash
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
-```
-
-4. **Start coding.** Every piece of code Cursor writes will include OTel instrumentation.
-
-## Try It Locally
-
-```bash
-# Start Jaeger
-docker compose up -d
-
-# TypeScript example (Express server with POST /api/support)
-cd examples/simple-pipeline
-npm install && npm start
-# In another terminal: curl -X POST http://localhost:3000/api/support -H "Content-Type: application/json" -d '{"message":"Help me reset my password"}'
-
-# Python example
-cd examples/simple-pipeline-python
-pip install -r requirements.txt
-python main.py
-
-# Open Jaeger UI
-open http://localhost:16686
-```
-
-Search for the `simple-pipeline-example` service to see the traces.
-
-## What Gets Traced
-
-| Layer | What | Example Span Names | Key Attributes |
-|---|---|---|---|
-| Auto / Infrastructure | HTTP, gRPC, AWS SDK, DB clients | `GET /api/users`, `DynamoDB.GetItem` | Standard OTel HTTP/DB attributes |
-| Pipeline Structure | Multi-step processing pipelines | `customer-support-pipeline`, `classify-intent` | `pipeline.stage`, `pipeline.execution_type`, `pipeline.success` |
-| GenAI LLM Calls | OpenAI, Anthropic, Bedrock, etc. | `chat gpt-4o`, `chat claude-sonnet-4-20250514` | `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.usage.input_tokens` |
-
-## Helper Library API
-
-### TypeScript (`cursor-auto-otel` npm package)
-
-- **`setupTracing(serviceName)`** — configure a tracer provider with OTLP exporter
-- **`tracePipeline(name, fn)`** — create a root span for a pipeline execution
-- **`traceStep(pipeline, stageName, { executionType }, fn)`** — create a child span for a pipeline stage
-- **`traceLLMCall(pipeline, stageName, { provider, model }, fn)`** — create a child span following GenAI semantic conventions
-
-### Python (`cursor_auto_otel` package)
-
-- **`setup_tracing(service_name)`** — configure a tracer provider with OTLP exporter
-- **`trace_pipeline(name)`** — context manager, yields a `PipelineContext`
-- **`trace_step(pipeline, stage_name, execution_type=...)`** — context manager for a pipeline stage
-- **`trace_llm_call(pipeline, stage_name, provider=..., model=...)`** — context manager, yields a `capture_usage` callable
-
-The helpers are optional. The Cursor rule teaches Cursor to write correct OTel instrumentation with or without them.
-
-## Backends
-
-The traces go wherever you point `OTEL_EXPORTER_OTLP_ENDPOINT`:
-
-- **Jaeger** (local) — `http://localhost:4318` — `docker compose up`
-- **Grafana Cloud** — `https://otlp-gateway-<region>.grafana.net/otlp` with basic auth headers
-- **Datadog** — run the Datadog Agent with OTLP ingest enabled on port 4318
-- **Dynatrace** — `https://{env-id}.live.dynatrace.com/api/v2/otlp` with API token
-- **Honeycomb** — `https://api.honeycomb.io` with `x-honeycomb-team` header
-
-## AWS Lambda
-
-Use the [AWS Distro for OpenTelemetry (ADOT) Lambda Layer](https://aws-otel.github.io/docs/getting-started/lambda) as your OTel collector. The layer handles exporting — your code just needs the tracer provider and instrumentation, which this rule provides.
-
-## How the Rule Works
-
-Cursor rules (`.mdc` files in `.cursor/rules/`) are instructions that Cursor follows when writing code. With `alwaysApply: true`, the rule is active in every conversation. When you ask Cursor to write a new service, add an API endpoint, or build an AI pipeline, it reads the rule and includes the correct OpenTelemetry setup, span creation, attribute assignment, and error handling — automatically. The rule detects whether your project is TypeScript or Python and uses the corresponding patterns.
-
-## Contributing
-
-Issues and PRs welcome.
-
-## Limitations
-
-- **Node/TypeScript only for now** — The helper library and the rule’s code examples target Node.js and TypeScript. A Python rule variant exists; other runtimes are not yet covered.
-- **`pipeline.*` attributes are custom** — They are not part of the official OpenTelemetry semantic conventions. GenAI attributes follow [OTel GenAI semconv](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-spans/).
-- **Rule effectiveness depends on model compliance** — Cursor follows the rule when generating code; it can be overridden or ignored. Consistency relies on the model applying the rule.
+---
 
 ## License
 
