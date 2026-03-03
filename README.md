@@ -6,6 +6,16 @@ cursor-auto-otel makes Cursor generate **OpenTelemetry-instrumented code** by de
 
 It does **not** instrument Cursor itself — it teaches Cursor to emit code that, when you run it, produces standard OTel traces and sends them to any OTLP backend (Jaeger, Grafana Cloud, Datadog, Honeycomb, etc.). Supported runtimes: **TypeScript/Node.js** and **Python**.
 
+## What Gets Traced
+
+| Layer | What | Example Span Names | Key Attributes |
+|-------|------|-------------------|----------------|
+| Infrastructure (via auto-instrumentation) | HTTP, gRPC, DB clients | `GET /api/users`, `DynamoDB.GetItem` | Standard OTel HTTP/DB semantic conventions |
+| Pipeline structure | Multi-step processing flows | `customer-support-pipeline`, `classify-intent` | `pipeline.name`, `pipeline.stage`, `pipeline.execution_type`, `pipeline.success` |
+| GenAI / LLM calls | OpenAI, Anthropic, Bedrock, etc. | `chat gpt-4o`, `chat claude-sonnet-4-20250514` | `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.usage.input_tokens` |
+
+Infrastructure spans come free from auto-instrumentation. Rows 2 and 3 are what cursor-auto-otel adds.
+
 ---
 
 ## Documentation
