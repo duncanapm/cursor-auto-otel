@@ -72,7 +72,7 @@ with tracer.start_as_current_span("http GET /users", kind=SpanKind.SERVER) as sp
 
 - Every LLM/GenAI API call MUST be wrapped in a span. Kind MUST be CLIENT.
 - Span name MUST be `{gen_ai.operation.name} {gen_ai.request.model}` (e.g. `chat gpt-4o`).
-- MUST set: `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model` (when known). MUST set `gen_ai.usage.input_tokens` and `gen_ai.usage.output_tokens` when API returns usage.
+- MUST set: `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.system` (same value as provider; deprecated but required for backend compatibility), `gen_ai.request.model` (when known). MUST set `gen_ai.usage.input_tokens` and `gen_ai.usage.output_tokens` when API returns usage.
 - On failure: record exception, set status ERROR, end span in `finally`/`with`.
 
 ---
@@ -111,7 +111,7 @@ Before completing code that adds or modifies handlers, pipelines, or LLM calls:
 - [ ] Handler span ended in `finally` (TS) or `with` (Python).
 - [ ] On error: recordException + ERROR status + rethrow/re-raise.
 - [ ] Pipelines: root + stage spans with `pipeline.*` attributes and `pipeline.success` on both paths.
-- [ ] Every LLM call in a CLIENT span with required GenAI attributes and token usage when available.
+- [ ] Every LLM call in a CLIENT span with required GenAI attributes (`gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.system` (same as provider), `gen_ai.request.model` when available) and token usage when available.
 - [ ] Child spans after await use current context.
 - [ ] No forbidden anti-patterns.
 

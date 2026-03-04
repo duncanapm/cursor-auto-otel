@@ -3,6 +3,8 @@
 
 class GenAIAttributes:
     PROVIDER_NAME = "gen_ai.provider.name"
+    # Deprecated in OTEL spec; set to same value as provider for backend compatibility (e.g. Dash0).
+    SYSTEM = "gen_ai.system"
     REQUEST_MODEL = "gen_ai.request.model"
     RESPONSE_MODEL = "gen_ai.response.model"
     OPERATION_NAME = "gen_ai.operation.name"

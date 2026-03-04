@@ -116,6 +116,7 @@ export async function traceLLMCall<T>(
     span.setAttribute(PipelineAttributes.EXECUTION_TYPE, "llm");
     span.setAttribute(PipelineAttributes.NAME, pipeline.name);
     span.setAttribute(GenAIAttributes.PROVIDER_NAME, options.provider);
+    span.setAttribute(GenAIAttributes.SYSTEM, options.provider);
     span.setAttribute(GenAIAttributes.REQUEST_MODEL, options.model);
     span.setAttribute(GenAIAttributes.OPERATION_NAME, operationName);
     if (options.maxTokens !== undefined) {

@@ -75,6 +75,7 @@ Pipeline and stage spans MUST use `SpanKind.INTERNAL`.
 |-----------|-------------|
 | `gen_ai.operation.name` | REQUIRED (e.g. `chat`, `text_completion`, `embeddings`) |
 | `gen_ai.provider.name` | REQUIRED (e.g. `openai`, `anthropic`, `aws.bedrock`) |
+| `gen_ai.system` | REQUIRED; same value as the provider (e.g. `anthropic`, `openai`). Deprecated in the OTEL GenAI spec in favor of `gen_ai.provider.name`, but set for compatibility with backends that still use it (e.g. Dash0). |
 | `gen_ai.request.model` | REQUIRED when the model is known; omit only if the API does not expose it |
 
 5.4. When the API returns usage information, the generator MUST set `gen_ai.usage.input_tokens` and `gen_ai.usage.output_tokens` on the span.
@@ -170,7 +171,7 @@ Before completing code generation that adds or modifies request handlers, pipeli
 - [ ] Every handler span is ended in a `finally` block (TypeScript) or `with` (Python); no path skips `span.end()`.
 - [ ] On error, every affected span has `recordException` / `record_exception` and status set to ERROR; errors are rethrown/re-raised.
 - [ ] Pipeline stages have a root span and one span per stage with `pipeline.name`, `pipeline.stage`, `pipeline.execution_type`, and `pipeline.success` set.
-- [ ] Every LLM/GenAI call is wrapped in a span with kind CLIENT and required attributes (`gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model` where available); token usage set when returned.
+- [ ] Every LLM/GenAI call is wrapped in a span with kind CLIENT and required attributes (`gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.system` (same as provider), `gen_ai.request.model` where available); token usage set when returned.
 - [ ] Child spans created after an `await` or across async boundaries use the current context so the trace tree is correct.
 - [ ] No forbidden anti-patterns are present (no hardcoded OTLP, no unended spans, no swallowed errors, no LLM call without span, no duplicate tracer registration).
 

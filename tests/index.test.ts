@@ -126,6 +126,7 @@ describe("traceLLMCall", () => {
     expect(llmSpan).toBeDefined();
     expect(llmSpan!.kind).toBe(SpanKind.CLIENT);
     expect(llmSpan!.attributes[GenAIAttributes.PROVIDER_NAME]).toBe("openai");
+    expect(llmSpan!.attributes[GenAIAttributes.SYSTEM]).toBe("openai");
     expect(llmSpan!.attributes[GenAIAttributes.REQUEST_MODEL]).toBe("gpt-4o");
     expect(llmSpan!.attributes[GenAIAttributes.OPERATION_NAME]).toBe("chat");
     expect(llmSpan!.attributes[PipelineAttributes.STAGE]).toBe("generate");

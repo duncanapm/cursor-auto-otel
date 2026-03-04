@@ -33,7 +33,7 @@ When the rule is applied and Cursor generates code according to it:
 - **Tracer initialisation**: The rule requires a single tracer provider initialisation at application startup, with the OTLP endpoint taken from the environment (no hardcoded URLs).
 - **Handler coverage**: Every HTTP handler, job, or event entry point is wrapped in a root span with a stable, low-cardinality name.
 - **Pipeline structure**: Multi-step pipelines get a root span and one span per stage, with required attributes (`pipeline.name`, `pipeline.stage`, `pipeline.execution_type`, `pipeline.success`).
-- **LLM call instrumentation**: Every call to an LLM or GenAI API is wrapped in a span with kind CLIENT and required GenAI attributes (e.g. `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`), and token usage is set when the API returns it.
+- **LLM call instrumentation**: Every call to an LLM or GenAI API is wrapped in a span with kind CLIENT and required GenAI attributes (e.g. `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.system` (same as provider, for backend compatibility), `gen_ai.request.model`), and token usage is set when the API returns it.
 - **Error handling**: Exceptions are recorded on the span, span status is set to ERROR, and the error is rethrown so the trace reflects failures.
 - **Span lifecycle**: Spans are ended in a `finally` block (TypeScript) or equivalent (e.g. `with` in Python), so no span is left open on success or failure.
 - **Context propagation**: When child spans are created after an `await` or across async boundaries, the current context is passed so the trace tree remains correct.

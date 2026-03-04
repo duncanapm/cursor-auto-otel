@@ -97,6 +97,7 @@ def trace_llm_call(
         span.set_attribute(PipelineAttributes.EXECUTION_TYPE, "llm")
         span.set_attribute(PipelineAttributes.NAME, pipeline.name)
         span.set_attribute(GenAIAttributes.PROVIDER_NAME, provider)
+        span.set_attribute(GenAIAttributes.SYSTEM, provider)
         span.set_attribute(GenAIAttributes.REQUEST_MODEL, model)
         span.set_attribute(GenAIAttributes.OPERATION_NAME, operation_name)
         if max_tokens is not None:
